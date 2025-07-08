@@ -1,0 +1,166 @@
+service: app-schedule-medic
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs16.x
+  region: us-east-1
+  stage: dev
+
+  environment:
+    APPOINTMENTS_TABLE_NAME: Appointments
+    SNS_TOPIC_ARN:
+      Ref: AppointmentTopic
+    SQS_PE_URL:
+      Ref: SQSPEQueue
+    SQS_CL_URL:
+      Ref: SQSCLQueue
+
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+          Resource: arn:aws:dynamodb:${self:provider.region}:*:table/Appointments
+        - Effect: Allow
+          Action:
+            - sns:Publish
+          Resource:
+            Ref: AppointmentTopic
+        - Effect: Allow
+          Action:
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - arn:aws:sqs:${self:provider.region}:*:SQS_PE
+            - arn:aws:sqs:${self:provider.region}:*:SQS_CL
+        - Effect: Allow
+          Action:
+            - rds:*
+          Resource: "*" # ajustable según configuración real, puede restringirse por RDS ARN
+
+functions:
+  registerAppointment:
+    handler: src/handlers/appointment.registerHandler
+    vpc:
+      securityGroupIds:
+        - sg-05a67286de62e5c1d
+      subnetIds:
+        - subnet-xxxxxxxxxxxxxx  # puedes listar varias
+    events:
+      - http:
+          path: appointments
+          method: post
+  
+  confirmAppointment:
+    handler: src/handlers/appointment.updateStatusHandler
+    vpc:
+      securityGroupIds:
+        - sg-xxxxxxxxxxxxxxxxx   # reemplazar por el ID real
+      subnetIds:
+        - subnet-xxxxxxxxxxxxxx  # puedes listar varias
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [AppointmentConfirmationsQueue, Arn]
+
+  appointment_pe:
+    handler: src/handlers/appointment_pe.handler
+    vpc:
+      securityGroupIds:
+        - sg-xxxxxxxxxxxxxxxxx
+      subnetIds:
+        - subnet-xxxxxxxxxxxxxx
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [SQSPEQueue, Arn]
+
+  appointment_cl:
+    handler: src/handlers/appointment_cl.handler
+    vpc:
+      securityGroupIds:
+        - sg-xxxxxxxxxxxxxxxxx
+      subnetIds:
+        - subnet-xxxxxxxxxxxxxx
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt: [SQSCLQueue, Arn]
+
+resources:
+  Resources:
+
+    ## SNS Topic
+    AppointmentTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: AppointmentTopic
+
+    ## SNS Subscriptions with filter policy
+    AppointmentSubscriptionPE:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref AppointmentTopic
+        Protocol: sqs
+        Endpoint: !GetAtt SQSPEQueue.Arn
+        FilterPolicy:
+          countryISO:
+            - PE
+
+    AppointmentSubscriptionCL:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref AppointmentTopic
+        Protocol: sqs
+        Endpoint: !GetAtt SQSCLQueue.Arn
+        FilterPolicy:
+          countryISO:
+            - CL
+
+    ## SQS Queues
+    SQSPEQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: SQS_PE
+
+    SQSCLQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: SQS_CL
+
+    ## Policies to allow SNS → SQS delivery
+    SQSPEPolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref SQSPEQueue
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "SQS:SendMessage"
+              Resource: !GetAtt SQSPEQueue.Arn
+              Condition:
+                ArnEquals:
+                  aws:SourceArn: !Ref AppointmentTopic
+
+    SQSCLPolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref SQSCLQueue
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "SQS:SendMessage"
+              Resource: !GetAtt SQSCLQueue.Arn
+              Condition:
+                ArnEquals:
+                  aws:SourceArn: !Ref AppointmentTopic
+
+plugins:
+  - serverless-offline
