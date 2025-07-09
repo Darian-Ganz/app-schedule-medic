@@ -5,12 +5,15 @@ export class ConfirmAppointment {
   constructor(private publisher: EventPublisher) {}
 
   async execute(input: { insuredId: string; scheduleId: number; countryISO: string }) {
-    
-    console.log('ConfirmAppointment: Publishing event...', input);
-    
-    const eventType = input.countryISO === 'CL' ? 'AppointmentCreatedCL' : 'AppointmentCreatedPE';
-    await this.publisher.publish(eventType, input);
+    try {
+          console.log('ConfirmAppointment: Publishing event...', input);
+          
+          const eventType = input.countryISO === 'CL' ? 'AppointmentCreatedCL' : 'AppointmentCreatedPE';
+          await this.publisher.publish(eventType, input);
 
-    console.log('ConfirmAppointment: Event published');
+          console.log('ConfirmAppointment: Event published');
+    } catch(err){
+      console.error('ConfirmAppointment error:', err);
+    }    
   }
 }

@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: API de Agendamiento Médico
+  description: API backend serverless para agendar y consultar citas médicas.
+  version: 1.0.0
+
+servers:
+  - url: https://{api_base}/dev
+    variables:
+      api_base:
+        default: 5gb0378iyl.execute-api.us-east-1.amazonaws.com
+
+paths:
+  /appointments:
+    post:
+      summary: Registrar una cita médica
+      operationId: createAppointment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - insuredId
+                - scheduleId
+                - countryISO
+              properties:
+                insuredId:
+                  type: string
+                  example: "00042"
+                  description: ID del asegurado
+                scheduleId:
+                  type: integer
+                  example: 100
+                  description: ID del horario disponible
+                countryISO:
+                  type: string
+                  enum: [PE, CL]
+                  description: Código de país
+      responses:
+        '202':
+          description: Agendamiento aceptado y en proceso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: El agendamiento está en proceso.
+        '400':
+          description: Campos inválidos
+        '500':
+          description: Error interno del servidor
+
+  /appointments/{insuredId}:
+    get:
+      summary: Consultar agendamiento por ID de asegurado
+      operationId: getAppointmentByInsuredId
+      parameters:
+        - name: insuredId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "00042"
+      responses:
+        '200':
+          description: Agendamiento encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointment:
+                    type: object
+                    properties:
+                      insuredId:
+                        type: string
+                      scheduleId:
+                        type: integer
+                      countryISO:
+                        type: string
+                      status:
+                        type: string
+                        example: pending
+                  message:
+                    type: string
+                    example: Agendamiento encontrado exitosamente.
+        '400':
+          description: Falta el parámetro insuredId
+        '404':
+          description: No se encontró agendamiento
+        '500':
+          description: Error interno del servidor
+
+components:
+  schemas: {}
